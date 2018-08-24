@@ -1,0 +1,459 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+	"time"
+	"net/http"
+	"crypto/tls"
+	"net/url"
+	"log"
+	"io/ioutil"
+	"encoding/json"
+	"github.com/mmcdole/gofeed"
+	"os"
+	"bufio"
+)
+
+type FeedConfig struct {
+	Subreddit string `json:"subreddit"`
+	Feeds     []struct {
+		Subreddit  string `json:"subreddit,omitempty"`
+		Title      string `json:"title,omitempty"`
+		Prefix     string `json:"prefix,omitempty"`
+		Suffix     string `json:"suffix,omitempty"`
+		FlairId    string `json:"fid,omitempty"`
+		Flair      string `json:"flair,omitempty"`
+		UrlAddress string `json:"url"`
+	} `json:"feeds"`
+}
+
+type ErrorAPI struct {
+	err string
+	url string
+	val string
+}
+
+func (e *ErrorAPI) Error() string {
+	return fmt.Sprintf("submit error: %v URL: %v\n%v", e.err, e.url, e.val)
+}
+
+type ErrorSubmitExists struct {
+	err string
+	url string
+}
+
+func (e *ErrorSubmitExists) Error() string {
+	return fmt.Sprintf(`submit error: %v URL: %v`, e.err, e.url)
+}
+
+type RedditSubmitErrorJson struct {
+	JQuery [][]interface{} `json:"jquery,omitempty"`
+	JSON   struct {
+		Errors [][]string `json:"errors,omitempty"`
+	} `json:"json,omitempty"`
+}
+
+type RedditAccessToken struct {
+	Id           string
+	Type         string
+	RefreshToken string
+	ExpiresIn    time.Time
+}
+
+type RedditAccessTokenJson struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int64  `json:"expires_in"`
+	Scope       string `json:"scope"`
+}
+
+type Reddit struct {
+	Client    *http.Client
+	Id        string
+	Secret    string
+	UserAgent string
+	Scopes    []string
+	Username  string
+	Password  string
+	Uri       string
+	Rate      time.Duration
+	State     string
+	Token     RedditAccessToken
+	limiter   <-chan time.Time
+}
+
+func New(username, password, id, secret string, userAgent string) Reddit {
+
+	dur := time.Second
+
+	limiter := time.Tick(dur)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false,
+			},
+		},
+	}
+	client.Timeout = time.Second * 15
+
+	return Reddit{
+		Client:    client,
+		Rate:      dur,
+		Id:        id,
+		Secret:    secret,
+		Username:  username,
+		Password:  password,
+		UserAgent: userAgent,
+		limiter:   limiter,
+		Token: RedditAccessToken{
+			Id:        "",
+			ExpiresIn: time.Now(),
+		},
+	}
+}
+
+func (r *Reddit) Login() (err error) {
+	v := url.Values{}
+	v.Set("grant_type", "password")
+	v.Set("username", r.Username)
+	v.Set("password", r.Password)
+
+	req, err := http.NewRequest("POST", "https://www.reddit.com/api/v1/access_token", strings.NewReader(v.Encode()))
+
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf(``)
+	}
+	req.SetBasicAuth(r.Id, r.Secret)
+	req.Header.Add("User-Agent", r.UserAgent)
+
+	resp, err := r.Client.Do(req)
+
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf(`request error`)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(`status code %v`, resp.StatusCode)
+	}
+
+	htmlData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf(`read error`)
+	}
+	defer resp.Body.Close()
+
+	var tmp RedditAccessTokenJson
+
+	err = json.Unmarshal(htmlData, &tmp)
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf(`request error`)
+	}
+
+	r.Token = RedditAccessToken{
+		Id:        tmp.AccessToken,
+		ExpiresIn: time.Now().Add(time.Duration(tmp.ExpiresIn) * time.Second),
+		Type:      tmp.TokenType,
+	}
+
+	return nil
+
+}
+
+func (r *Reddit) SubmitLink(subReddit string, title string, link string) error {
+	v := url.Values{}
+	v.Set("sr", subReddit)
+	v.Set("title", title)
+	v.Set("url", link)
+	v.Set("kind", "link")
+	v.Set("uh", "")
+	//v.Set("flair_text", flair)
+	v.Set("resubmit", "false")
+	//v.Set("ad", "false")
+	v.Set("nsfw", "false")
+	//v.Set("spoiler", "false")
+	v.Set("api_type", "json")
+
+	req, err := http.NewRequest("POST", "https://oauth.reddit.com/api/submit", strings.NewReader(v.Encode()))
+
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf(`error building request`)
+	}
+	req.Header.Add("User-Agent", r.UserAgent)
+	req.Header.Add("Authorization", fmt.Sprintf(`%v %v`, r.Token.Type, r.Token.Id))
+
+	resp, err := r.Client.Do(req)
+
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf(`request error`)
+	}
+
+	htmlData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return fmt.Errorf(`read error`)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return &ErrorAPI{
+			err: string(htmlData),
+			url: req.URL.RequestURI(),
+			val: v.Encode(),
+		}
+	}
+
+	log.Printf(`%v`, string(htmlData))
+
+	var tmp RedditSubmitErrorJson
+	err = json.Unmarshal(htmlData, &tmp)
+	if err != nil {
+		return fmt.Errorf(`error: %v`, string(htmlData))
+	}
+
+	var errs []string
+
+	if len(tmp.JSON.Errors) > 0 {
+		for _, item := range tmp.JSON.Errors[0] {
+			if item == `ALREADY_SUB` {
+				return &ErrorSubmitExists{err: `link already submitted`, url: link}
+			}
+
+			errs = append(errs, item)
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf(`%v`, strings.Join(errs, ". "))
+}
+
+const (
+	USER_AGENT               = `unix:SimpleGoRedditRSSBot:v0.0.1 by /u/raspi`
+	OVERRIDE_SUBMITTED_CHECK = false
+)
+
+type Configuration struct {
+	Username string `json:"user"`
+	Password string `json:"pass"`
+	ClientId string `json:"cid"`
+	Secret   string `json:"secret"`
+}
+
+func LoadConfig() Configuration {
+	cfgdata, err := ioutil.ReadFile(`config.json`)
+	var cfg Configuration
+
+	err = json.Unmarshal(cfgdata, &cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	return cfg
+}
+
+func LoadSubmitted() (sub map[string]time.Time) {
+	sub = make(map[string]time.Time, 0)
+
+	f, err := os.Open(`submitted.txt`)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Create new file
+			ftmp, err := os.Create(`submitted.txt`)
+			if err != nil {
+				panic(err)
+			}
+			defer ftmp.Close()
+
+			return LoadSubmitted()
+		}
+
+		panic(err)
+	}
+
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		sub[scanner.Text()] = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
+
+	return sub
+}
+
+func LoadFeedConfig() FeedConfig {
+	cfgdata, err := ioutil.ReadFile(`feeds.json`)
+	var cfg FeedConfig
+
+	err = json.Unmarshal(cfgdata, &cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	return cfg
+}
+
+func (c *FeedConfig) ValidateFeedConfig() (err error) {
+
+	if c.Subreddit == `` {
+		return fmt.Errorf(`default subreddit empty`)
+	}
+
+	seenTitles := make(map[string]bool)
+
+	seenUrls := make(map[string]bool)
+
+	for _, feed := range c.Feeds {
+		if feed.UrlAddress == `` {
+			return fmt.Errorf(`empty URL address`)
+		}
+
+		if feed.Title == `` {
+			return fmt.Errorf(`empty title for %v`, feed.UrlAddress)
+		}
+
+		_, urlOk := seenUrls[feed.UrlAddress]
+
+		if !urlOk {
+			seenUrls[feed.UrlAddress] = true
+		} else {
+			return fmt.Errorf(`URL address %v exists already`, feed.UrlAddress)
+		}
+
+		_, titleOk := seenTitles[feed.Title]
+
+		if !titleOk {
+			seenTitles[feed.Title] = true
+		} else {
+			return fmt.Errorf(`title %v exists already ref: %v`, feed.Title, feed.UrlAddress)
+		}
+
+	}
+
+	return nil
+}
+
+func (c *Configuration) ValidateConfiguration() (err error) {
+	if c.Secret == `` {
+		return fmt.Errorf(`empty secret`)
+	}
+
+	if c.ClientId == `` {
+		return fmt.Errorf(`empty client id`)
+	}
+
+	if c.Password == `` {
+		return fmt.Errorf(`empty password`)
+	}
+
+	if c.Username == `` {
+		return fmt.Errorf(`empty user name`)
+	}
+
+	return nil
+}
+
+func SaveSubmitted(sub map[string]time.Time) {
+	f, err := ioutil.TempFile(`.`, `submitted.txt`)
+	if err != nil {
+		panic(err)
+	}
+
+	for url, _ := range sub {
+		f.WriteString(fmt.Sprintf("%v\n", url))
+	}
+
+	f.Close()
+
+	os.Rename(`submitted.txt`, `submitted_old.txt`)
+	os.Rename(f.Name(), `submitted.txt`)
+	os.Remove(`submitted_old.txt`)
+}
+
+func main() {
+
+	log.Printf(`Loading config..`)
+	cfg := LoadConfig()
+	err := cfg.ValidateConfiguration()
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf(`Loading feeds..`)
+	feeds := LoadFeedConfig()
+	err = feeds.ValidateFeedConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf(`Loading submitted..`)
+	submitted := LoadSubmitted()
+
+	loggedIn := false
+
+	defaultSubReddit := feeds.Subreddit
+
+	r := Reddit{}
+
+	for _, feedSource := range feeds.Feeds {
+		subReddit := feedSource.Subreddit
+
+		if subReddit == `` {
+			subReddit = defaultSubReddit
+		}
+
+		fp := gofeed.NewParser()
+
+		feed, _ := fp.ParseURL(feedSource.UrlAddress)
+		log.Printf(`Feed: %v | %v %v %v`, feedSource.Title, feed.Title, feed.Description, feed.Link)
+
+		for _, item := range feed.Items {
+			log.Printf(`  >> %v [%v]`, item.Title, item.PublishedParsed)
+
+			_, ok := submitted[item.Link]
+
+			if ok && !OVERRIDE_SUBMITTED_CHECK {
+				log.Printf(`    Found in local cache, skipping`)
+				continue
+			}
+
+			if !loggedIn {
+				log.Printf(`Logging in..`)
+				r = New(cfg.Username, cfg.Password, cfg.ClientId, cfg.Secret, USER_AGENT)
+				err = r.Login()
+				if err != nil {
+					panic(err)
+				}
+
+				loggedIn = true
+			}
+
+			err = r.SubmitLink(subReddit, item.Title, item.Link)
+			if err != nil {
+				serr, ok := err.(*ErrorSubmitExists)
+
+				if ok {
+					log.Printf("    Already submitted:\n  %v", item.Link)
+					submitted[serr.url] = *item.PublishedParsed
+				} else {
+					log.Fatalf(`%v`, err)
+				}
+			}
+
+			time.Sleep(time.Second * 2)
+		}
+	}
+
+	log.Printf(`Saving submitted..`)
+	SaveSubmitted(submitted)
+}
