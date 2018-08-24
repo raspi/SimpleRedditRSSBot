@@ -1,18 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"github.com/mmcdole/gofeed"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
-	"net/http"
-	"crypto/tls"
-	"net/url"
-	"log"
-	"io/ioutil"
-	"encoding/json"
-	"github.com/mmcdole/gofeed"
-	"os"
-	"bufio"
 )
 
 type FeedConfig struct {
@@ -237,9 +237,15 @@ func (r *Reddit) SubmitLink(subReddit string, title string, link string) error {
 	return fmt.Errorf(`%v`, strings.Join(errs, ". "))
 }
 
+var VERSION = `0.0.0`
+var BUILD = `dev`
+var USER_AGENT = fmt.Sprintf(`unix:SimpleGoRedditRSSBot:v%v build %v by /u/raspi`, VERSION, BUILD)
+
 const (
-	USER_AGENT               = `unix:SimpleGoRedditRSSBot:v0.0.1 by /u/raspi`
 	OVERRIDE_SUBMITTED_CHECK = false
+	CONFIG_FILE              = `config.json`
+	CACHE_FILE               = `submitted.txt`
+	FEEDS_FILE               = `feeds.json`
 )
 
 type Configuration struct {
@@ -264,11 +270,11 @@ func LoadConfig() Configuration {
 func LoadSubmitted() (sub map[string]time.Time) {
 	sub = make(map[string]time.Time, 0)
 
-	f, err := os.Open(`submitted.txt`)
+	f, err := os.Open(CACHE_FILE)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Create new file
-			ftmp, err := os.Create(`submitted.txt`)
+			ftmp, err := os.Create(CACHE_FILE)
 			if err != nil {
 				panic(err)
 			}
@@ -364,7 +370,7 @@ func (c *Configuration) ValidateConfiguration() (err error) {
 }
 
 func SaveSubmitted(sub map[string]time.Time) {
-	f, err := ioutil.TempFile(`.`, `submitted.txt`)
+	f, err := ioutil.TempFile(`.`, CACHE_FILE)
 	if err != nil {
 		panic(err)
 	}
@@ -375,8 +381,8 @@ func SaveSubmitted(sub map[string]time.Time) {
 
 	f.Close()
 
-	os.Rename(`submitted.txt`, `submitted_old.txt`)
-	os.Rename(f.Name(), `submitted.txt`)
+	os.Rename(CACHE_FILE, `submitted_old.txt`)
+	os.Rename(f.Name(), CACHE_FILE)
 	os.Remove(`submitted_old.txt`)
 }
 
