@@ -1,0 +1,15 @@
+# systemctl --user enable redditbot.timer
+# systemctl --user start redditbot.timer
+# systemctl --user list-timers
+[Unit]
+Description=Reddit RSS Bot Timer
+
+[Timer]
+# Wait boot
+OnBootSec=10min
+# run every X duration
+OnUnitActiveSec=1h
+Unit=redditbot.service
+
+[Install]
+WantedBy=timers.target
