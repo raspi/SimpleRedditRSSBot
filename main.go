@@ -256,7 +256,11 @@ type Configuration struct {
 }
 
 func LoadConfig() Configuration {
-	cfgdata, err := ioutil.ReadFile(`config.json`)
+	cfgdata, err := ioutil.ReadFile(CONFIG_FILE)
+	if err != nil {
+		log.Fatalf(`couldn't open %v'`, CONFIG_FILE)
+		panic(err)
+	}
 	var cfg Configuration
 
 	err = json.Unmarshal(cfgdata, &cfg)
@@ -298,7 +302,11 @@ func LoadSubmitted() (sub map[string]time.Time) {
 }
 
 func LoadFeedConfig() FeedConfig {
-	cfgdata, err := ioutil.ReadFile(`feeds.json`)
+	cfgdata, err := ioutil.ReadFile(FEEDS_FILE)
+	if err != nil {
+		log.Fatalf(`couldn't open %v'`, FEEDS_FILE)
+	}
+
 	var cfg FeedConfig
 
 	err = json.Unmarshal(cfgdata, &cfg)
