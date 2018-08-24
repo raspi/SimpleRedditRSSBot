@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -377,14 +378,42 @@ func (c *Configuration) ValidateConfiguration() (err error) {
 	return nil
 }
 
-func SaveSubmitted(sub map[string]time.Time) {
+func SaveSubmitted(submitSource map[string]time.Time) {
+	// Order the URLs by published date
+	type KeyValuePair struct {
+		Key   string
+		Value int64
+	}
+
+	var sortedPairs []KeyValuePair
+	for k, v := range submitSource {
+		sortedPairs = append(sortedPairs, KeyValuePair{Key: k, Value: v.Unix()})
+	}
+
+	// Free memory
+	submitSource = nil
+
+	sort.Slice(sortedPairs, func(i, j int) bool {
+		return sortedPairs[i].Value > sortedPairs[j].Value
+	})
+
 	f, err := ioutil.TempFile(`.`, CACHE_FILE)
 	if err != nil {
 		panic(err)
 	}
 
-	for url, _ := range sub {
-		f.WriteString(fmt.Sprintf("%v\n", url))
+	// Only remember N latest URLs
+	urlsToKeep := 10000
+
+	// List URLs in date order
+	for _, kv := range sortedPairs {
+		if urlsToKeep == 0 {
+			// Old URLs are dropped from cache
+			break
+		}
+
+		f.WriteString(fmt.Sprintf("%v\n", kv.Key))
+		urlsToKeep--
 	}
 
 	f.Close()
