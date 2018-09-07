@@ -14,7 +14,7 @@ bin:
 	upx -v -9 $(BUILDDIR)/$(UNIXBINARY)
 
 release:
-	tar cvzf $(BUILDDIR)/$(LINUXRELEASE) $(BUILDDIR)/$(UNIXBINARY)
+	cd $(BUILDDIR); tar cvzf $(LINUXRELEASE) $(UNIXBINARY)
 
 .PHONY: all clean test
 
