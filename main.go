@@ -256,7 +256,7 @@ var BUILD = `dev`
 var USER_AGENT = fmt.Sprintf(`unix:SimpleGoRedditRSSBot:v%v build %v by /u/raspi`, VERSION, BUILD)
 
 const (
-	OVERRIDE_SUBMITTED_CHECK = false
+	OVERRIDE_SUBMITTED_CHECK = false // for debugging purposes
 	CONFIG_FILE              = `config.json`
 	CACHE_FILE               = `submitted.txt`
 	FEEDS_FILE               = `feeds.json`
