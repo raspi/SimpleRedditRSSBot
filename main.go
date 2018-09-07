@@ -67,6 +67,7 @@ type RedditAccessTokenJson struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int64  `json:"expires_in"`
 	Scope       string `json:"scope"`
+	Error       string `json:"error,omitempty"`
 }
 
 type Reddit struct {
@@ -115,6 +116,7 @@ func New(username, password, id, secret string, userAgent string) Reddit {
 	}
 }
 
+// Log in to Reddit
 func (r *Reddit) Login() (err error) {
 	v := url.Values{}
 	v.Set("grant_type", "password")
@@ -148,14 +150,25 @@ func (r *Reddit) Login() (err error) {
 	}
 	defer resp.Body.Close()
 
+	// Check content type
+	ctype := resp.Header.Get("Content-Type")
+	if !strings.Contains(ctype, `application/json`) {
+		return fmt.Errorf(`invalid content type: %v html: %v`, ctype, string(htmlData))
+	}
+
+	// JSON to struct
 	var tmp RedditAccessTokenJson
 
 	err = json.Unmarshal(htmlData, &tmp)
 	if err != nil {
-		log.Println(err)
-		return fmt.Errorf(`request error`)
+		return fmt.Errorf(`request error: %v`, err)
 	}
 
+	if tmp.Error != "" {
+		return fmt.Errorf(`login error: %v`, tmp.Error)
+	}
+
+	// Generate token
 	r.Token = RedditAccessToken{
 		Id:        tmp.AccessToken,
 		ExpiresIn: time.Now().Add(time.Duration(tmp.ExpiresIn) * time.Second),
@@ -475,7 +488,7 @@ func main() {
 				r = New(cfg.Username, cfg.Password, cfg.ClientId, cfg.Secret, USER_AGENT)
 				err = r.Login()
 				if err != nil {
-					panic(err)
+					log.Fatalf(`Login failed: %v`, err)
 				}
 
 				loggedIn = true
