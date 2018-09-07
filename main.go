@@ -471,7 +471,12 @@ func main() {
 
 		fp := gofeed.NewParser()
 
-		feed, _ := fp.ParseURL(feedSource.UrlAddress)
+		feed, err := fp.ParseURL(feedSource.UrlAddress)
+		if err != nil {
+			log.Printf(`error: feed URL parse error: %v`, err)
+			continue
+		}
+
 		log.Printf(`Feed: %v | %v %v %v`, feedSource.Title, feed.Title, feed.Description, feed.Link)
 
 		for _, item := range feed.Items {
