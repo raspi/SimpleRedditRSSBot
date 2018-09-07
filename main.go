@@ -441,7 +441,7 @@ func SaveSubmitted(submitSource map[string]time.Time) {
 func main() {
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot v%v build %v\n", VERSION, BUILD)
+		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
 		fmt.Fprintf(flag.CommandLine.Output(), "Homepage <URL: https://github.com/raspi/SimpleRedditRSSBot >\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "(c) Pekka Järvinen 2018\n")
