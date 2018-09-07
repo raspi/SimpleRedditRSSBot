@@ -8,6 +8,7 @@ import (
 	"github.com/mmcdole/gofeed"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -474,9 +475,29 @@ func main() {
 		log.Printf(`Feed: %v | %v %v %v`, feedSource.Title, feed.Title, feed.Description, feed.Link)
 
 		for _, item := range feed.Items {
-			log.Printf(`  >> %v [%v]`, item.Title, item.PublishedParsed)
+			link, err := url.Parse(item.Link)
+			if err != nil {
+				log.Printf(`error: parsing URL %v - %v`, item.Link, err)
+				continue
+			}
 
-			_, ok := submitted[item.Link]
+			log.Printf("- %v [%v] - %v", item.Title, item.PublishedParsed, link.String())
+
+			// Do a DNS lookup if URL has broken address
+			ips, err := net.LookupIP(link.Host)
+			if err != nil {
+				log.Printf(`error: DNS lookup %v - %v`, item.Link, err)
+				continue
+			}
+
+			if len(ips) == 0 {
+				// Broken domain without IP addresses
+				log.Printf(`error: couldn't resolve IP address for %v`, link.String())
+				continue
+			}
+
+			// Check local cache
+			_, ok := submitted[link.String()]
 
 			if ok && !OVERRIDE_SUBMITTED_CHECK {
 				log.Printf(`    Found in local cache, skipping`)
@@ -484,6 +505,7 @@ func main() {
 			}
 
 			if !loggedIn {
+				// Log in for submitting
 				log.Printf(`Logging in..`)
 				r = New(cfg.Username, cfg.Password, cfg.ClientId, cfg.Secret, USER_AGENT)
 				err = r.Login()
@@ -494,18 +516,20 @@ func main() {
 				loggedIn = true
 			}
 
-			err = r.SubmitLink(subReddit, item.Title, item.Link)
+			// Submit link
+			err = r.SubmitLink(subReddit, item.Title, link.String())
 			if err != nil {
 				serr, ok := err.(*ErrorSubmitExists)
 
 				if ok {
-					log.Printf("    Already submitted:\n  %v", item.Link)
-					submitted[serr.url] = *item.PublishedParsed
+					log.Printf("    Already submitted: %v - %#v", link.String(), serr)
+					submitted[link.String()] = *item.PublishedParsed
 				} else {
 					log.Fatalf(`%v`, err)
 				}
 			}
 
+			// Sleep so that API isn't overloaded and bot doesn't get banned
 			time.Sleep(time.Second * 2)
 		}
 	}
