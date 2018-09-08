@@ -444,7 +444,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
 		fmt.Fprintf(flag.CommandLine.Output(), "Homepage <URL: https://github.com/raspi/SimpleRedditRSSBot >\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "(c) Pekka Järvinen 2018\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "(c) Pekka Järvinen 2018-\n")
 	}
 
 	flag.Parse()
