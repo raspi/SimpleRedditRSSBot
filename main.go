@@ -506,7 +506,7 @@ func main() {
 
 		feed, err := fp.ParseURL(feedSource.UrlAddress)
 		if err != nil {
-			errlog.Printf(`error: feed URL parse error: %v`, err)
+			errlog.Printf(`error: feed '%v' URL %v parse error: %v`, feedSource.Title, feedSource.UrlAddress, err)
 			continue
 		}
 
