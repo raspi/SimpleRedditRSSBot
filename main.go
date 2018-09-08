@@ -42,12 +42,12 @@ func (e *ErrorAPI) Error() string {
 }
 
 type ErrorSubmitExists struct {
-	err string
-	url string
+	err  string
+	link SubmitLink
 }
 
 func (e *ErrorSubmitExists) Error() string {
-	return fmt.Sprintf(`submit error: %v URL: %v`, e.err, e.url)
+	return fmt.Sprintf(`submit error: %v URL: %v`, e.err, e.link.Url)
 }
 
 type RedditSubmitErrorJson struct {
@@ -181,11 +181,11 @@ func (r *Reddit) Login() (err error) {
 
 }
 
-func (r *Reddit) SubmitLink(subReddit string, title string, link string) error {
+func (r *Reddit) SubmitLink(link SubmitLink) error {
 	v := url.Values{}
-	v.Set("sr", subReddit)
-	v.Set("title", title)
-	v.Set("url", link)
+	v.Set("sr", link.SubReddit)
+	v.Set("title", link.Title)
+	v.Set("url", link.Url)
 	v.Set("kind", "link")
 	v.Set("uh", "")
 	//v.Set("flair_text", flair)
@@ -218,6 +218,12 @@ func (r *Reddit) SubmitLink(subReddit string, title string, link string) error {
 	}
 	defer resp.Body.Close()
 
+	// Check content type
+	ctype := resp.Header.Get("Content-Type")
+	if !strings.Contains(ctype, `application/json`) {
+		return fmt.Errorf(`invalid content type: %v html: %v`, ctype, string(htmlData))
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return &ErrorAPI{
 			err: string(htmlData),
@@ -239,7 +245,10 @@ func (r *Reddit) SubmitLink(subReddit string, title string, link string) error {
 	if len(tmp.JSON.Errors) > 0 {
 		for _, item := range tmp.JSON.Errors[0] {
 			if item == `ALREADY_SUB` {
-				return &ErrorSubmitExists{err: `link already submitted`, url: link}
+				return &ErrorSubmitExists{
+					err:  `link already submitted`,
+					link: link,
+				}
 			}
 
 			errs = append(errs, item)
@@ -444,7 +453,16 @@ func SaveSubmitted(submitSource map[string]time.Time) {
 	os.Remove(`submitted_old.txt`)
 }
 
+type SubmitLink struct {
+	Title     string
+	Url       string
+	SubReddit string
+	Published time.Time
+}
+
 func main() {
+
+	errlog := log.New(os.Stderr, ``, log.LstdFlags)
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
@@ -469,15 +487,14 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf(`Loading submitted..`)
+	log.Printf(`Loading submitted cache..`)
 	submitted := LoadSubmitted()
-
-	loggedIn := false
 
 	defaultSubReddit := feeds.Subreddit
 
-	r := Reddit{}
+	var collectedLinks []SubmitLink
 
+	// Collect URLs from feed(s)
 	for _, feedSource := range feeds.Feeds {
 		subReddit := feedSource.Subreddit
 
@@ -489,72 +506,96 @@ func main() {
 
 		feed, err := fp.ParseURL(feedSource.UrlAddress)
 		if err != nil {
-			log.Printf(`error: feed URL parse error: %v`, err)
+			errlog.Printf(`error: feed URL parse error: %v`, err)
 			continue
 		}
-
-		log.Printf(`Feed: %v | %v %v %v`, feedSource.Title, feed.Title, feed.Description, feed.Link)
 
 		for _, item := range feed.Items {
 			link, err := url.Parse(item.Link)
 			if err != nil {
-				log.Printf(`error: parsing URL %v - %v`, item.Link, err)
+				errlog.Printf(`error: parsing URL %v - %v`, item.Link, err)
 				continue
 			}
-
-			log.Printf("- %v [%v] - %v", item.Title, item.PublishedParsed, link.String())
 
 			// Do a DNS lookup if URL has broken address
 			ips, err := net.LookupIP(link.Host)
 			if err != nil {
-				log.Printf(`error: DNS lookup %v - %v`, item.Link, err)
+				errlog.Printf(`error: DNS lookup %v - %v`, item.Link, err)
 				continue
 			}
 
 			if len(ips) == 0 {
 				// Broken domain without IP addresses
-				log.Printf(`error: couldn't resolve IP address for %v`, link.String())
+				errlog.Printf(`error: couldn't resolve IP address for %v`, link.String())
 				continue
 			}
 
-			// Check local cache
-			_, ok := submitted[link.String()]
-
-			if ok && !OVERRIDE_SUBMITTED_CHECK {
-				log.Printf(`    Found in local cache, skipping`)
-				continue
+			sl := SubmitLink{
+				Title:     item.Title,
+				Url:       link.String(),
+				SubReddit: subReddit,
+				Published: *item.PublishedParsed,
 			}
 
-			if !loggedIn {
-				// Log in for submitting
-				log.Printf(`Logging in..`)
-				r = New(cfg.Username, cfg.Password, cfg.ClientId, cfg.Secret, USER_AGENT)
-				err = r.Login()
-				if err != nil {
-					log.Fatalf(`Login failed: %v`, err)
-				}
-
-				loggedIn = true
-			}
-
-			// Submit link
-			err = r.SubmitLink(subReddit, item.Title, link.String())
-			if err != nil {
-				serr, ok := err.(*ErrorSubmitExists)
-
-				if ok {
-					log.Printf("    Already submitted: %v - %#v", link.String(), serr)
-					submitted[link.String()] = *item.PublishedParsed
-				} else {
-					log.Fatalf(`%v`, err)
-				}
-			}
-
-			// Sleep so that API isn't overloaded and bot doesn't get banned
-			time.Sleep(time.Second * 2)
+			collectedLinks = append(collectedLinks, sl)
 		}
 	}
 
-	log.Printf(`Saving submitted..`)
+	log.Printf(`Got %v URLs from feeds..`, len(collectedLinks))
+
+	log.Printf(`Removing cached..`)
+	var submitLinks []SubmitLink
+
+	// Remove cached
+	for _, link := range collectedLinks {
+		// Check local cache
+		_, ok := submitted[link.Url]
+
+		if ok && !OVERRIDE_SUBMITTED_CHECK {
+			continue
+		}
+
+		submitLinks = append(submitLinks, link)
+	}
+
+	// Free memory
+	collectedLinks = []SubmitLink{}
+
+	log.Printf(`Got %v URLs for submitting..`, len(submitLinks))
+
+	// Submit new links to Reddit
+	redditClient := New(cfg.Username, cfg.Password, cfg.ClientId, cfg.Secret, USER_AGENT)
+
+	if len(submitLinks) > 0 {
+		// Log in for submitting
+		log.Printf(`Logging in..`)
+		err = redditClient.Login()
+		if err != nil {
+			errlog.Fatalf(`Login failed: %v`, err)
+		}
+	}
+
+	for _, link := range submitLinks {
+		log.Printf(`Submitting %v [%v] - %v`, link.Title, link.Published, link.Url)
+
+		// Submit link
+		err = redditClient.SubmitLink(link)
+		if err != nil {
+			serr, ok := err.(*ErrorSubmitExists)
+
+			if ok {
+				errlog.Printf("Already submitted: %v - %#v", link.Url, serr)
+				submitted[serr.link.Url] = serr.link.Published
+			} else {
+				log.Fatalf(`%v`, err)
+			}
+		}
+
+		// Sleep so that API isn't overloaded and bot doesn't get banned
+		time.Sleep(time.Second * 2)
+
+	}
+
+	log.Printf(`Saving submitted cache..`)
 	SaveSubmitted(submitted)
 }
