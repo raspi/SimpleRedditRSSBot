@@ -348,6 +348,12 @@ func (c *FeedConfig) ValidateFeedConfig() (err error) {
 			return fmt.Errorf(`empty URL address`)
 		}
 
+		// Check that URL scheme is valid
+		_, err := url.Parse(feed.UrlAddress)
+		if err != nil {
+			return fmt.Errorf(`error: parsing URL %v - %v`, feed.UrlAddress, err)
+		}
+
 		if feed.Title == `` {
 			return fmt.Errorf(`empty title for %v`, feed.UrlAddress)
 		}
