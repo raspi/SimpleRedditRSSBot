@@ -230,3 +230,30 @@ func (r *Reddit) SubmitLink(link SubmitLink) error {
 
 	return fmt.Errorf(`%v`, strings.Join(errs, ". "))
 }
+
+type ErrorAPI struct {
+	err string
+	url string
+	val string
+}
+
+func (e *ErrorAPI) Error() string {
+	return fmt.Sprintf("submit error: %v URL: %v\n%v", e.err, e.url, e.val)
+}
+
+type ErrorSubmitExists struct {
+	err  string
+	link SubmitLink
+}
+
+func (e *ErrorSubmitExists) Error() string {
+	return fmt.Sprintf(`submit error: %v URL: %v`, e.err, e.link.Url)
+}
+
+// Submit link information
+type SubmitLink struct {
+	Title     string    // Title of post
+	Url       string    // URL of post
+	SubReddit string    // Subreddit name
+	Published time.Time // Published date and time (used for cache)
+}

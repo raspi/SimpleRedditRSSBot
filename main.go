@@ -15,27 +15,8 @@ import (
 	"time"
 )
 
-type ErrorAPI struct {
-	err string
-	url string
-	val string
-}
-
-func (e *ErrorAPI) Error() string {
-	return fmt.Sprintf("submit error: %v URL: %v\n%v", e.err, e.url, e.val)
-}
-
-type ErrorSubmitExists struct {
-	err  string
-	link SubmitLink
-}
-
-func (e *ErrorSubmitExists) Error() string {
-	return fmt.Sprintf(`submit error: %v URL: %v`, e.err, e.link.Url)
-}
-
-var VERSION = `0.0.0`
-var BUILD = `dev`
+var VERSION = `0.0.0` // Version (git tag)
+var BUILD = `dev`     // Build (git hash)
 var USER_AGENT = fmt.Sprintf(`unix:SimpleGoRedditRSSBot:v%v build %v by /u/raspi`, VERSION, BUILD)
 
 const (
@@ -52,6 +33,7 @@ type Configuration struct {
 	Secret   string `json:"secret"`
 }
 
+// Load configuration JSON file
 func LoadConfig() Configuration {
 	cfgdata, err := ioutil.ReadFile(CONFIG_FILE)
 	if err != nil {
@@ -68,6 +50,7 @@ func LoadConfig() Configuration {
 	return cfg
 }
 
+// Load already submitted cache file
 func LoadSubmitted() (sub map[string]time.Time) {
 	sub = make(map[string]time.Time, 0)
 
@@ -161,13 +144,6 @@ func SaveSubmitted(submitSource map[string]time.Time) {
 	os.Rename(CACHE_FILE, `submitted_old.txt`)
 	os.Rename(f.Name(), CACHE_FILE)
 	os.Remove(`submitted_old.txt`)
-}
-
-type SubmitLink struct {
-	Title     string    // Title of post
-	Url       string    // URL of post
-	SubReddit string    // Subreddit name
-	Published time.Time // Published date and time (used for cache)
 }
 
 func main() {
