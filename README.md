@@ -1,5 +1,5 @@
 # SimpleRedditRSSBot
-Simple Reddit RSS Bot for submitting RSS feed links to subreddit(s). It keeps cache of newest 10 000 links submitted in `submitted.txt`.
+Simple Reddit RSS Bot for submitting RSS feed links to subreddit(s). It keeps cache of newest 10 000 links submitted in `submitted.txt`. URLs in RSS feeds are not resubmitted to a subreddit if there are duplicates.
 
 ## Setup bot app config
 Register a new user for your bot in Reddit. Verify email. Set proper details.
@@ -11,7 +11,18 @@ MyBotAppExample
 personal use script
 sgdbfseyseghbgsef <- Client id
 ```
+
 **Secret** is listed separately in the same app page. 
+
+## Create a directory for the bot
+
+```
+$ mkdir redditrssbot
+$ cd redditrssbot
+```
+Full path is now for example `/home/raspi/redditrssbot`
+
+Now download the latest release to this directory.
 
 Rename `config.json.dist` to `config.json`.
 
@@ -26,6 +37,7 @@ Rename `config.json.dist` to `config.json`.
 
 
 ## Setup feed URLs
+
 Rename `feeds.json.dist` to `feeds.json`.
 
 ```json
@@ -52,4 +64,80 @@ Rename `feeds.json.dist` to `feeds.json`.
     }
   ]
 }
+```
+
+## Setup automatic submits to reddit with SystemD
+
+Rename `systemd.service.dist` to `redditbot.service`.
+
+Rename `systemd.timer.dist` to `redditbot.timer`.
+
+Configure [.service](https://www.freedesktop.org/software/systemd/man/systemd.service.html):
+```ini
+[Unit]
+Description=Reddit RSS Bot Service
+
+[Service]
+Type=oneshot
+# !! Change these:
+WorkingDirectory=/home/raspi/redditbot
+ExecStart=/home/raspi/redditbot/redditrssbot-x64
+
+[Install]
+WantedBy=timers.target
+```
+Enable the `.service` file in user mode:
+```
+$ systemctl --user enable redditbot.service
+```
+
+Configure [.timer](https://www.freedesktop.org/software/systemd/man/systemd.timer.html):
+
+```ini
+[Unit]
+Description=Reddit RSS Bot Timer
+
+[Timer]
+# Wait after boot
+OnBootSec=10min
+# run every X duration
+# Recommended 1 hour (1h)
+# Reddit is very strict how often links should be 
+# submitted so use at least one hour sleep time. 
+# Otherwise the bot will be banned.
+OnUnitActiveSec=1h
+Unit=redditbot.service
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable and start the `redditbot.timer` timer in user mode:
+
+```
+$ systemctl --user enable redditbot.timer
+$ systemctl --user start redditbot.timer
+```
+
+Check that the timer is listed:
+```
+$ systemctl --user list-timers
+```
+
+Check the logs with `journalctl --user -xe`.
+
+## Troubleshooting
+
+### SystemD user timer doesn't work when I log out
+
+You must enable linger to your user as root as follows:
+
+```
+$ sudo loginctl enable-linger <user>
+```
+
+For example:
+
+```
+$ sudo loginctl enable-linger raspi
 ```
