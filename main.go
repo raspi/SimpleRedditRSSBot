@@ -194,6 +194,7 @@ func main() {
 			subReddit = defaultSubReddit
 		}
 
+		// RSS HTTP client
 		fp := gofeed.NewParser()
 
 		feed, err := fp.ParseURL(feedSource.UrlAddress)
