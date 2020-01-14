@@ -157,7 +157,7 @@ func (r *Reddit) SubmitLink(link SubmitLink) error {
 	v.Set("kind", "link")
 	v.Set("uh", "")
 	//v.Set("flair_text", flair)
-	v.Set("resubmit", "false")
+	v.Set("resubmit", "false") // Do not resubmit existing link
 	//v.Set("ad", "false")
 	v.Set("nsfw", "false")
 	//v.Set("spoiler", "false")
