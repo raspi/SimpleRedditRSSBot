@@ -40,7 +40,7 @@ func LoadFeedConfig(fname string) FeedConfig {
 func (c *FeedConfig) ValidateFeedConfig() (err error) {
 
 	if c.Subreddit == `` {
-		return fmt.Errorf(`default subreddit is empty`)
+		return fmt.Errorf(`default subreddit name is empty`)
 	}
 
 	seenTitles := make(map[string]bool)
