@@ -56,9 +56,7 @@ type Reddit struct {
 }
 
 func New(username, password, id, secret string, userAgent string) Reddit {
-
 	dur := time.Second
-
 	limiter := time.Tick(dur)
 
 	client := &http.Client{

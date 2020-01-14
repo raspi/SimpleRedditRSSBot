@@ -21,10 +21,10 @@ type FeedConfig struct {
 	} `json:"feeds"`
 }
 
-func LoadFeedConfig() FeedConfig {
-	cfgdata, err := ioutil.ReadFile(FEEDS_FILE)
+func LoadFeedConfig(fname string) FeedConfig {
+	cfgdata, err := ioutil.ReadFile(fname)
 	if err != nil {
-		log.Fatalf(`couldn't open %v'`, FEEDS_FILE)
+		log.Fatalf(`couldn't open %v'`, fname)
 	}
 
 	var cfg FeedConfig
@@ -40,7 +40,7 @@ func LoadFeedConfig() FeedConfig {
 func (c *FeedConfig) ValidateFeedConfig() (err error) {
 
 	if c.Subreddit == `` {
-		return fmt.Errorf(`default subreddit empty`)
+		return fmt.Errorf(`default subreddit is empty`)
 	}
 
 	seenTitles := make(map[string]bool)

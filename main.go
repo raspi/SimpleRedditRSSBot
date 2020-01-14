@@ -22,7 +22,6 @@ var USER_AGENT = fmt.Sprintf(`unix:SimpleGoRedditRSSBot:v%v build %v by /u/raspi
 const (
 	OVERRIDE_SUBMITTED_CHECK = false // for debugging purposes
 	CONFIG_FILE              = `config.json`
-	CACHE_FILE               = `submitted.txt`
 	FEEDS_FILE               = `feeds.json`
 )
 
@@ -34,10 +33,10 @@ type Configuration struct {
 }
 
 // Load configuration JSON file
-func LoadConfig() Configuration {
-	cfgdata, err := ioutil.ReadFile(CONFIG_FILE)
+func LoadConfig(fname string) Configuration {
+	cfgdata, err := ioutil.ReadFile(fname)
 	if err != nil {
-		log.Fatalf(`couldn't open %v'`, CONFIG_FILE)
+		log.Fatalf(`couldn't open %v'`, fname)
 		panic(err)
 	}
 	var cfg Configuration
@@ -51,20 +50,21 @@ func LoadConfig() Configuration {
 }
 
 // Load already submitted cache file
-func LoadSubmitted() (sub map[string]time.Time) {
+// map[URL]submit time
+func LoadSubmitted(fname string) (sub map[string]time.Time) {
 	sub = make(map[string]time.Time, 0)
 
-	f, err := os.Open(CACHE_FILE)
+	f, err := os.Open(fname)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Create new file
-			ftmp, err := os.Create(CACHE_FILE)
+			ftmp, err := os.Create(fname)
 			if err != nil {
 				panic(err)
 			}
 			defer ftmp.Close()
 
-			return LoadSubmitted()
+			return LoadSubmitted(fname)
 		}
 
 		panic(err)
@@ -101,7 +101,8 @@ func (c *Configuration) ValidateConfiguration() (err error) {
 	return nil
 }
 
-func SaveSubmitted(submitSource map[string]time.Time) {
+// map[URL]submit time
+func SaveSubmitted(fname string, submitSource map[string]time.Time) {
 	// Order the URLs by published date
 	type KeyValuePair struct {
 		Key   string
@@ -120,7 +121,7 @@ func SaveSubmitted(submitSource map[string]time.Time) {
 		return sortedPairs[i].Value > sortedPairs[j].Value
 	})
 
-	f, err := ioutil.TempFile(`.`, CACHE_FILE)
+	f, err := ioutil.TempFile(`.`, fname)
 	if err != nil {
 		panic(err)
 	}
@@ -141,14 +142,16 @@ func SaveSubmitted(submitSource map[string]time.Time) {
 
 	f.Close()
 
-	os.Rename(CACHE_FILE, `submitted_old.txt`)
-	os.Rename(f.Name(), CACHE_FILE)
+	os.Rename(fname, `submitted_old.txt`)
+	os.Rename(f.Name(), fname)
 	os.Remove(`submitted_old.txt`)
 }
 
 func main() {
-
 	errlog := log.New(os.Stderr, ``, log.LstdFlags)
+
+	configFileArg := flag.String(`config`, CONFIG_FILE, `Config file name which has client secrets`)
+	feedFileArg := flag.String(`feed`, FEEDS_FILE, `RSS Feed file name`)
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
@@ -160,21 +163,18 @@ func main() {
 	flag.Parse()
 
 	log.Printf(`Loading config..`)
-	cfg := LoadConfig()
+	cfg := LoadConfig(*configFileArg)
 	err := cfg.ValidateConfiguration()
 	if err != nil {
 		panic(err)
 	}
 
 	log.Printf(`Loading feeds..`)
-	feeds := LoadFeedConfig()
+	feeds := LoadFeedConfig(*feedFileArg)
 	err = feeds.ValidateFeedConfig()
 	if err != nil {
 		panic(err)
 	}
-
-	log.Printf(`Loading submitted cache..`)
-	submitted := LoadSubmitted()
 
 	defaultSubReddit := feeds.Subreddit
 
@@ -211,7 +211,7 @@ func main() {
 			}
 
 			if len(ips) == 0 {
-				// Broken domain without IP addresses
+				// Broken domain without IP address(es)
 				errlog.Printf(`error: couldn't resolve IP address for %v`, link.String())
 				continue
 			}
@@ -234,6 +234,9 @@ func main() {
 
 	// Remove cached
 	for _, link := range collectedLinks {
+		log.Printf(`Loading submitted cache..`)
+		submitted := LoadSubmitted(fmt.Sprintf(`%s.cache`, link.SubReddit))
+
 		// Check local cache
 		_, ok := submitted[link.Url]
 
@@ -262,7 +265,7 @@ func main() {
 	}
 
 	for _, link := range submitLinks {
-		log.Printf(`Submitting %v [%v] - %v`, link.Title, link.Published, link.Url)
+		log.Printf(`Submitting to %v: %v [%v] - %v`, link.SubReddit, link.Title, link.Published, link.Url)
 
 		// Submit link
 		err = redditClient.SubmitLink(link)
@@ -270,8 +273,14 @@ func main() {
 			serr, ok := err.(*ErrorSubmitExists)
 
 			if ok {
+				submitFile := fmt.Sprintf(`%s.cache`, link.SubReddit)
+
 				errlog.Printf("Already submitted: %v - %#v", link.Url, serr)
+				submitted := LoadSubmitted(submitFile)
 				submitted[serr.link.Url] = serr.link.Published
+
+				log.Printf(`Saving submitted cache..`)
+				SaveSubmitted(submitFile, submitted)
 			} else {
 				log.Fatalf(`%v`, err)
 			}
@@ -282,6 +291,4 @@ func main() {
 
 	}
 
-	log.Printf(`Saving submitted cache..`)
-	SaveSubmitted(submitted)
 }
