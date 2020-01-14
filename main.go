@@ -15,8 +15,9 @@ import (
 	"time"
 )
 
-var VERSION = `0.0.0` // Version (git tag)
-var BUILD = `dev`     // Build (git hash)
+var VERSION = `0.0.0`                       // Version (git tag)
+var BUILD = `dev`                           // Build (git hash)
+var BUILDDATE = `0000-00-00T00:00:00+00:00` // Build date (git commit)
 var USER_AGENT = fmt.Sprintf(`unix:SimpleGoRedditRSSBot:v%v build %v by /u/raspi`, VERSION, BUILD)
 
 const (
