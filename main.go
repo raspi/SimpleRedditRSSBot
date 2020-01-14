@@ -151,14 +151,19 @@ func SaveSubmitted(fname string, submitSource map[string]time.Time) {
 func main() {
 	errlog := log.New(os.Stderr, ``, log.LstdFlags)
 
-	configFileArg := flag.String(`config`, CONFIG_FILE, `Config file name which has client secrets`)
-	feedFileArg := flag.String(`feed`, FEEDS_FILE, `RSS Feed file name`)
+	configFileArg := flag.String(`config`, CONFIG_FILE, `JSON config file name which has client secrets generated at reddit`)
+	feedFileArg := flag.String(`feed`, FEEDS_FILE, `RSS feed JSON file name`)
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
-		fmt.Fprintf(flag.CommandLine.Output(), "Homepage <URL: https://github.com/raspi/SimpleRedditRSSBot >\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "\n")
-		fmt.Fprintf(flag.CommandLine.Output(), "(c) Pekka Järvinen 2018-\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Simple Reddit RSS feed bot %v build %v\n", VERSION, BUILD)
+		_, _ = fmt.Fprintf(os.Stdout, "Homepage <URL: https://github.com/raspi/SimpleRedditRSSBot >\n")
+		_, _ = fmt.Fprintf(os.Stdout, "\n")
+		_, _ = fmt.Fprintf(os.Stdout, "(c) Pekka Järvinen 2018-\n")
+		_, _ = fmt.Fprintln(os.Stdout, `Parameters:`)
+
+		flag.VisitAll(func(f *flag.Flag) {
+			_, _ = fmt.Fprintf(os.Stdout, "  -%s\n      %s (default: %q)\n", f.Name, f.Usage, f.DefValue)
+		})
 	}
 
 	flag.Parse()
