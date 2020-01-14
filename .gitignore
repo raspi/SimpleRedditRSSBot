@@ -3,3 +3,5 @@ build/*
 config.json
 submitted.txt
 feeds.json
+release/v*.*.*
+bin/*
