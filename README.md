@@ -1,5 +1,5 @@
 # SimpleRedditRSSBot
-Simple Reddit RSS Bot for submitting RSS feed links to subreddit(s). It keeps cache of newest 10 000 links submitted in `submitted.txt`. URLs in RSS feeds are not resubmitted to a subreddit if there are duplicates.
+Simple Reddit RSS Bot for submitting RSS feed links to subreddit(s). It keeps cache of newest 10 000 links submitted in a cache file per subreddit. URLs in RSS feeds are not resubmitted to a subreddit if there are duplicates.
 
 ## Setup bot app config
 Register a new user for your bot in Reddit. Verify email. Set proper details.
