@@ -1,4 +1,4 @@
-# systemctl --user enable redditbot.timer
+# systemctl --user enable $(pwd)/redditbot.timer
 # systemctl --user start redditbot.timer
 # systemctl --user list-timers
 [Unit]
@@ -8,6 +8,7 @@ Description=Reddit RSS Bot Timer
 # Wait boot
 OnBootSec=10min
 # run every X duration
+# Do not run too often or the bot WILL be banned and ratelimited
 OnUnitActiveSec=1h
 Unit=redditbot.service
 

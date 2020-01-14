@@ -1,12 +1,16 @@
-# systemctl --user enable redditbot.service
+# systemctl --user enable $(pwd)/redditbot.service
 [Unit]
 Description=Reddit RSS Bot Service
 
 [Service]
 Type=oneshot
-# Change these:
-WorkingDirectory=/home/redditbot
-ExecStart=/home/redditbot/redditrssbot-x64
+# !! Change these:
+WorkingDirectory=/CHANGEME
+ExecStart=/CHANGEME/redditrssbot
+
+# Examples:
+#WorkingDirectory=/home/raspi/redditbot
+#ExecStart=/home/raspi/redditbot/redditrssbot
 
 [Install]
 WantedBy=timers.target
