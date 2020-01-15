@@ -1,4 +1,10 @@
 # SimpleRedditRSSBot
+
+![GitHub All Releases](https://img.shields.io/github/downloads/raspi/SimpleRedditRSSBot/total?style=for-the-badge)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/raspi/SimpleRedditRSSBot?style=for-the-badge)
+![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/raspi/SimpleRedditRSSBot?style=for-the-badge)
+
+
 Simple Reddit RSS Bot for submitting RSS feed links to subreddit(s). It keeps cache of newest 10 000 links submitted in a cache file per subreddit. URLs in RSS feeds are not resubmitted to a subreddit if there are duplicates.
 
 ## Setup bot app config
